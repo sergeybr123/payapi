@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<OperationStateResponse xmlns="http://auth.robokassa.ru/Merchant/WebService/">
+    <Result>
+        <Code>integer</Code>
+        <Description>string</Description>
+    </Result>
+    <State>
+        <Code>integer</Code>
+        <RequestDate>datetime</RequestDate>
+        <StateDate>datetime</StateDate>
+    </State>
+    <Info>
+        <IncCurrLabel>string</IncCurrLabel>
+        <IncSum>decimal</IncSum>
+        <IncAccount>string</IncAccount>
+        <PaymentMethod>
+            <Code>string</Code>
+            <Description>string</Description>
+        </PaymentMethod>
+        <OutCurrLabel>string</OutCurrLabel>
+        <OutSum>decimal</OutSum>
+    </Info>
+</OperationStateResponse>
