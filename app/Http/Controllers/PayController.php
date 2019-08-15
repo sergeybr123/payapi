@@ -16,8 +16,8 @@ class PayController extends Controller
         $invoice = Invoice::where(['payment_id'=>$request->payment, 'email'=>$request->email, 'amount'=>$request->amount, 'status'=>'active'])->first();
 
         if(!$invoice) {
-            $mrh_login = $payment->data['merchant_id'];
-            $mrh_pass1 = $payment->data['merchant_pass'];
+            $mrh_login = $payment->data['merchantLogin'];
+            $mrh_pass1 = $payment->data['password_1'];
 
             $invoice = new Invoice();
             $invoice->payment_id = $request->payment;
@@ -31,9 +31,9 @@ class PayController extends Controller
 
             // сумма заказа
             $out_summ = $invoice->amount;
-
+            
             // формирование подписи
-            $crc  = md5("$mrh_login:$out_summ:$inv_id:$mrh_pass1");
+            $crc  = $invoice->makeSignature($mrh_login, $mrh_pass1);
 
             $invoice->crc = $crc;
             $invoice->save();
@@ -50,11 +50,18 @@ class PayController extends Controller
         $invoice->status = 'complete';
         $invoice->save();
 
+        $payment = Payment::findOrFail($invoice->payment_id);
+        $mrh_login = $payment->data['merchantLogin'];
+        $mrh_pass1 = $payment->data['password_1'];
+
         $new_invoice = new Invoice();
-        $new_invoice->payment_id = $invoice->payment;
+        $new_invoice->payment_id = $invoice->payment_id;
         $new_invoice->email = $invoice->email;
         $new_invoice->amount = $invoice->amount;
         $new_invoice->status = 'active';
+        
+        $new_invoice->save();
+        $new_invoice->crc = $new_invoice->makeSignature($mrh_login, $mrh_pass1);
         $new_invoice->save();
 
         return response()->json(['invoice' => $new_invoice], 201);
@@ -69,7 +76,7 @@ class PayController extends Controller
         $invoice = Invoice::faidOrFail($inv_id);
 
         $payment = Payment::findOrFail($invoice->payment_id);
-        $mrh_pass2 = $payment->data['merchant_pass_2'];
+        $mrh_pass2 = $payment->data['password_2'];
 
         $my_crc = strtoupper(md5("$out_summ:$inv_id:$mrh_pass2"));
 

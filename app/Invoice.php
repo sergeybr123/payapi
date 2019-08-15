@@ -20,4 +20,11 @@ class Invoice extends Model
         'created_at',
         'updated_at',
     ];
+
+    public function makeSignature(string $mrh_login, string $mrh_pass1) {
+        $phrase = "$mrh_login:$this->amount:$this->id:$mrh_pass1";
+        // формирование подписи
+        $crc  = md5($phrase);
+        return $crc;
+    }
 }
