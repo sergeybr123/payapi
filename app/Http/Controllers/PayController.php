@@ -6,6 +6,7 @@ use App\Invoice;
 use App\Payment;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use GuzzleHttp\Client;
 
 class PayController extends Controller
 {
@@ -47,17 +48,21 @@ class PayController extends Controller
     public function renew(Request $request)
     {
         $invoice = Invoice::findOrFail($request->id);
-        $invoice->status = 'complete';
-        $invoice->save();
+        if($invoice) {
+            $invoice->status = 'complete';
+            $invoice->save();
 
-        $new_invoice = new Invoice();
-        $new_invoice->payment_id = $invoice->payment;
-        $new_invoice->email = $invoice->email;
-        $new_invoice->amount = $invoice->amount;
-        $new_invoice->status = 'active';
-        $new_invoice->save();
+            $new_invoice = new Invoice();
+            $new_invoice->payment_id = $invoice->payment;
+            $new_invoice->email = $invoice->email;
+            $new_invoice->amount = $invoice->amount;
+            $new_invoice->status = 'active';
+            $new_invoice->save();
 
-        return response()->json(['invoice' => $new_invoice], 201);
+            return response()->json(['invoice' => $new_invoice], 201);
+        } else {
+            return response()->json(['error' => 1]);
+        }
     }
 
     public function robokassaResult(Request $request)
@@ -89,10 +94,40 @@ class PayController extends Controller
     public function getStatus($id)
     {
         $invoice = Invoice::findOrFail($id);
-        if($invoice->status == 'paid') {
-            return response()->json(['status' => 'paid']);
+        if($invoice) {
+            $payment = Payment::findOrFail($invoice->payment_id);
+            $crc = md5("$payment->data['merchant_id']:$invoice->id:$payment->data['merchant_pass_2']");
+            $url = "https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpState?MerchantLogin=$payment->data['merchant_id']&InvoiceID=$invoice->id&Signature=$crc";
+            $client = new Client();
+            $response = $client->request('GET', $url);
+            $xml = simplexml_load_file($response);
+            if($xml->State->Code == 100) {
+                $invoice->status = 'paid';
+                $invoice->paid_at = $xml->State->StateDate;
+                $invoice->save();
+                return response()->json(['error' => 0, 'status' => 'paid']);
+            } else {
+                return response()->json(['error' => 1, 'status' => 'no_paid']);
+            }
         } else {
-            return response()->json(['status' => 'no_paid']);
+            return response()->json(['error' => 1], 404);
         }
+
+//        $xmldata = simplexml_load_file("../pay.xml");
+
+        //https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpState?
+
+        //https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpState?MerchantLogin=demo&InvoiceID=1932809606&Signature=9e2bf657364d25acf5905b4ac4f50e39
+
+        //Signature - MerchantLogin:InvoiceID:Пароль#2
+
+//        return response()->json(['xml' => $xml]);
+
+//
+//        if($invoice->status == 'paid') {
+//            return response()->json(['status' => 'paid']);
+//        } else {
+//            return response()->json(['status' => 'no_paid']);
+//        }
     }
 }
