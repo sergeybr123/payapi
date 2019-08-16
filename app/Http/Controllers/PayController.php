@@ -19,9 +19,9 @@ class PayController extends Controller
 
         $invoice = Invoice::where(['payment_id'=>$request->payment, 'email'=>$request->email, 'amount'=>$request->amount])
             ->whereIn('status', ['active', 'paid'])
-            ->first();
+            ->first();           
 
-        if(!$invoice && $invoice->crc == $invoice->makeSignature($mrh_login, $mrh_pass1)) {
+        if(!$invoice ||  $invoice->crc != $invoice->makeSignature($mrh_login, $mrh_pass1)) {
             
 
             $invoice = new Invoice();
@@ -117,8 +117,11 @@ class PayController extends Controller
                 $xml = simplexml_load_string((string)$response->getBody());
                 
                 if($xml->State->Code == 100) {
-                    $invoice->status = 'paid';
-                    $invoice->paid_at = $xml->State->StateDate;
+                   $invoice->status = 'paid';
+                    
+                    $dateWithoutTZ = substr((string)$xml->State->StateDate,0,19);
+                    $invoice->paid_at =  Carbon::createFromFormat( "Y-m-d\TH:i:s", $dateWithoutTZ);
+                    
                     $invoice->save();
                     return response()->json(['error' => 0, 'status' => 'paid']);
                 } else {
