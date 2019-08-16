@@ -6,6 +6,7 @@ use App\Invoice;
 use App\Payment;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use GuzzleHttp\Client;
 
 class PayController extends Controller
 {
@@ -13,11 +14,15 @@ class PayController extends Controller
     {
         $payment = Payment::findOrFail($request->payment);
 
-        $invoice = Invoice::where(['payment_id'=>$request->payment, 'email'=>$request->email, 'amount'=>$request->amount, 'status'=>'active'])->first();
+        $mrh_login = $payment->data['merchantLogin'];
+        $mrh_pass1 = $payment->data['password_1'];
 
-        if(!$invoice) {
-            $mrh_login = $payment->data['merchantLogin'];
-            $mrh_pass1 = $payment->data['password_1'];
+        $invoice = Invoice::where(['payment_id'=>$request->payment, 'email'=>$request->email, 'amount'=>$request->amount])
+            ->whereIn('status', ['active', 'paid'])
+            ->first();
+
+        if(!$invoice && $invoice->crc == $invoice->makeSignature($mrh_login, $mrh_pass1)) {
+            
 
             $invoice = new Invoice();
             $invoice->payment_id = $request->payment;
@@ -47,8 +52,9 @@ class PayController extends Controller
     public function renew(Request $request)
     {
         $invoice = Invoice::findOrFail($request->id);
-        $invoice->status = 'complete';
-        $invoice->save();
+        if($invoice) {
+            $invoice->status = 'complete';
+            $invoice->save();
 
         $payment = Payment::findOrFail($invoice->payment_id);
         $mrh_login = $payment->data['merchantLogin'];
@@ -64,7 +70,10 @@ class PayController extends Controller
         $new_invoice->crc = $new_invoice->makeSignature($mrh_login, $mrh_pass1);
         $new_invoice->save();
 
-        return response()->json(['invoice' => $new_invoice], 201);
+            return response()->json(['invoice' => $new_invoice], 201);
+        } else {
+            return response()->json(['error' => 1]);
+        }
     }
 
     public function robokassaResult(Request $request)
@@ -96,10 +105,48 @@ class PayController extends Controller
     public function getStatus($id)
     {
         $invoice = Invoice::findOrFail($id);
-        if($invoice->status == 'paid') {
-            return response()->json(['status' => 'paid']);
+        if($invoice) {
+            $payment = Payment::findOrFail($invoice->payment_id);
+            $phrase = "{$payment->data['merchantLogin']}:$invoice->id:{$payment->data['password_2']}";
+            
+            $crc = md5($phrase);
+            $url = "https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpState?MerchantLogin={$payment->data['merchantLogin']}&InvoiceID={$invoice->id}&Signature={$crc}";
+            $client = new Client();
+            $response = $client->request('GET', $url);
+            if($response->getStatusCode() == 200) {
+                $xml = simplexml_load_string((string)$response->getBody());
+                
+                if($xml->State->Code == 100) {
+                    $invoice->status = 'paid';
+                    $invoice->paid_at = $xml->State->StateDate;
+                    $invoice->save();
+                    return response()->json(['error' => 0, 'status' => 'paid']);
+                } else {
+                    return response()->json(['error' => 1, 'status' => 'no_paid']);
+                } 
+            } else {
+                return response()->json(['error' => 1, 'status' => 'no_paid']);
+            }
+            
         } else {
-            return response()->json(['status' => 'no_paid']);
+            return response()->json(['error' => 1], 404);
         }
+
+//        $xmldata = simplexml_load_file("../pay.xml");
+
+        //https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpState?
+
+        //https://auth.robokassa.ru/Merchant/WebService/Service.asmx/OpState?MerchantLogin=demo&InvoiceID=1932809606&Signature=9e2bf657364d25acf5905b4ac4f50e39
+
+        //Signature - MerchantLogin:InvoiceID:Пароль#2
+
+//        return response()->json(['xml' => $xml]);
+
+//
+//        if($invoice->status == 'paid') {
+//            return response()->json(['status' => 'paid']);
+//        } else {
+//            return response()->json(['status' => 'no_paid']);
+//        }
     }
 }
