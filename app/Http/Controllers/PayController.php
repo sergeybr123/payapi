@@ -101,13 +101,15 @@ class PayController extends Controller
             $client = new Client();
             $response = $client->request('GET', $url);
             $xml = simplexml_load_file($response);
-            if($xml->State->Code == 100) {
-                $invoice->status = 'paid';
-                $invoice->paid_at = $xml->State->StateDate;
-                $invoice->save();
-                return response()->json(['error' => 0, 'status' => 'paid']);
-            } else {
-                return response()->json(['error' => 1, 'status' => 'no_paid']);
+            if($xml) {
+                if($xml->State->Code == 100) {
+                    $invoice->status = 'paid';
+                    $invoice->paid_at = $xml->State->StateDate;
+                    $invoice->save();
+                    return response()->json(['error' => 0, 'status' => 'paid']);
+                } else {
+                    return response()->json(['error' => 1, 'status' => 'no_paid']);
+                }
             }
         } else {
             return response()->json(['error' => 1], 404);
