@@ -117,8 +117,9 @@ class PayController extends Controller
                 $xml = simplexml_load_string((string)$response->getBody());
                 
                 if($xml->State->Code == 100) {
+                   $invoice->paid = true;
                    $invoice->status = 'paid';
-                    
+
                     $dateWithoutTZ = substr((string)$xml->State->StateDate,0,19);
                     $invoice->paid_at =  Carbon::createFromFormat( "Y-m-d\TH:i:s", $dateWithoutTZ);
                     
